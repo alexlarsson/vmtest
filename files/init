@@ -1,9 +1,19 @@
 #!/usr/bin/bash
 
+set -e
+
+function cleanup {
+  sync
+  echo "Shutting down VM"
+  echo o > /proc/sysrq-trigger
+  sleep 1000
+}
+
+trap cleanup EXIT
+
 export PATH=/usr/bin:/usr/sbin
 
 # Mount all "API" filesystems
-mount -t devtmpfs devtmpfs /dev -o "mode=0755,size=64m,seclabel"
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys -o "seclabel"
 mount -t tmpfs tmpfs /run -o "mode=0755,size=64m,seclabel"
@@ -29,20 +39,45 @@ else
    mount --move /mnt /var
 fi
 
+# Parse kernel commandline options
+EXPORT=qcow2
+RUN=
+set -- $(cat /proc/cmdline)
+for x in "$@"; do
+    case "$x" in
+        export=*)
+        EXPORT="${x#export=}"
+        ;;
+        run=*)
+        RUN="${x#run=}"
+        ;;
+    esac
+done
+
 # Mount build dir from host
 mount -t virtiofs host /mnt/
+rm -rf /mnt/.done
 
 # Copy reference sources from host
-mkdir -p /var/_build/osbuild_store/sources/org.osbuild.files
+mkdir -p /var/_build/osbuild_store/sources/org.osbuild.files /var/_build/output
 cp -ran /mnt/osbuild_store/sources/org.osbuild.files/* /var/_build/osbuild_store/sources/org.osbuild.files
 cp /mnt/manifest.json /var/_build/
 
+if [ "$RUN" != "" ]; then
+    $RUN
+fi
+
+rm -rf /var/_build/output
+mkdir /var/_build/output
+
 # Run osbuild in the automotive-osbuild container
-podman run -ti -v /mnt:/mnt -v /var:/var --privileged --rm --privileged --workdir /var/_build \
-       --security-opt label=type:unconfined_t \
+podman run -i -v /dev:/dev -v /mnt:/mnt -v /var:/var --privileged --rm --privileged --workdir /var/_build \
+       --pull=never \
        quay.io/centos-sig-automotive/automotive-osbuild \
        \
-       osbuild --store osbuild_store --export qcow2 --output-dir . manifest.json
+       osbuild --store osbuild_store --export qcow2 --output-dir /var/_build/output manifest.json
 
-# Spawn a bash at the end ..
-bash
+mkdir -p /mnt/output
+cd /var/_build/output/
+tar cvf /mnt/output.tar .
+echo 1 > /mnt/.done

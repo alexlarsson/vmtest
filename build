@@ -1,6 +1,8 @@
 #!/usr/bin/bash
 
-./mkrootfs
-./mkrootimg
-./mkvar
+ARCH=${1:-$(arch)}
+
+./mkrootfs $ARCH
+./mkrootimg $ARCH
+./mkvar $ARCH
 

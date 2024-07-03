@@ -2,27 +2,43 @@
 
 set -e
 
+ARCH=${1:-$(arch)}
+
+case $ARCH in
+  aarch64)
+    GOARCH=arm64
+    ;;
+
+  x86_64)
+    GOARCH=amd64
+    ;;
+
+  *)
+    GOARCH=$ARCH
+esac
+
 # Creates a var qcow with space to do work
 # Initially it just contains the container image which will be installed on first run
 
 CONTAINER_SOURCE=quay.io/centos-sig-automotive/automotive-osbuild
-CONTAINER_IMAGE_FILE=container.tar
+CONTAINER_IMAGE_FILE=container-$ARCH.tar
 
 # Download container image
 if ! test -f $CONTAINER_IMAGE_FILE ; then
-   skopeo copy docker://$CONTAINER_SOURCE docker-archive:$CONTAINER_IMAGE_FILE:$CONTAINER_SOURCE
+   skopeo --override-arch=$GOARCH copy docker://$CONTAINER_SOURCE docker-archive:$CONTAINER_IMAGE_FILE:$CONTAINER_SOURCE
 fi
 
 # Install container image in rootfs
 ROOTFS=$(mktemp -d)
-cp $CONTAINER_IMAGE_FILE $ROOTFS
+cp $CONTAINER_IMAGE_FILE $ROOTFS/container.tar
 
-rm -f var.ext4
-dd if=/dev/zero of=var.ext4 bs=1024 count=$((128*1024*1024))
-mkfs -t ext4 -d $ROOTFS -E root_owner=0:0 var.ext4
+rm -f var-$ARCH.ext4
+dd if=/dev/zero of=var-$ARCH.ext4 bs=1024 count=$((128*1024*1024))
+mkfs -t ext4 -d $ROOTFS -E root_owner=0:0 var-$ARCH.ext4
+
+rm -rf $ROOTFS
 
 # Convert to qcow2 (its mostly empty now so this will make it small until used)
-qemu-img convert -f raw -O qcow2 var.ext4 var.qcow2
+qemu-img convert -f raw -O qcow2 var-$ARCH.ext4 var-$ARCH.qcow2
 
-rm var.ext4
-rm -rf $ROOTFS
+rm var-$ARCH.ext4

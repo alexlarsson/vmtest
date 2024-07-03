@@ -3,6 +3,8 @@
 set -e
 
 MANIFEST=$1
+EXPORT=$2
+ARCH=${3:-$(arch)}
 
 AIB=../automotive-image-builder/automotive-image-builder
 
@@ -10,7 +12,7 @@ BUILDDIR=_build
 mkdir -p $BUILDDIR
 
 # Compose json manifest
-$AIB compose $1 $BUILDDIR/manifest.json
+$AIB compose --arch=$ARCH $1 $BUILDDIR/manifest.json
 
 # Download referenced files
 osbuild --store $BUILDDIR/osbuild_store $BUILDDIR/manifest.json
@@ -19,14 +21,28 @@ osbuild --store $BUILDDIR/osbuild_store $BUILDDIR/manifest.json
 /usr/libexec/virtiofsd --socket-path=.vsock -o source=$BUILDDIR -o cache=always &
 sleep 1
 
+TTY=ttyS0
+
+if [ "$ARCH" == $(arch) ]; then
+   QEMU="qemu-kvm"
+   QEMU_ARGS="-cpu host"
+else
+   QEMU="qemu-system-$ARCH"
+   if [ "$ARCH" == "aarch64" ]; then
+     QEMU_ARGS="--machine virt -cpu cortex-a57"
+     TTY=ttyAMA0
+   fi
+fi
+
+
 # Run osbuild in qemu
-qemu-kvm -nographic \
-         --kernel vmlinuz \
-         -cpu host \
-          -append "root=/dev/vda console=ttyS0" \
+$QEMU $QEMU_ARGS -nographic \
+         --kernel vmlinuz.$ARCH \
+         -smp $(nproc) \
+          -append "root=/dev/vda console=$TTY loglevel=3 export=$EXPORT" \
           -m 2G \
-         -drive file=rootfs.erofs,snapshot=on,media=disk,format=raw,if=virtio,id=rootdisk \
-         -drive file=var.qcow2,media=disk,format=qcow2,if=virtio,id=vardisk \
+         -drive file=rootfs-$ARCH.erofs,snapshot=on,media=disk,format=raw,if=virtio,id=rootdisk \
+         -drive file=var-$ARCH.qcow2,media=disk,format=qcow2,if=virtio,id=vardisk \
          -chardev socket,id=char0,path=.vsock \
          -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=host \
          -object memory-backend-file,id=mem,size=2G,mem-path=/dev/shm,share=on \

@@ -1,9 +1,11 @@
 #!/usr/bin/bash
 
+ARCH=${1:-$(arch)}
+
 # Create a erofs image with the rootfs + the basic init script
 # Also extracts the kernel for qemu use
 
-sudo cp files/init rootfs/sbin
-sudo mkfs.erofs rootfs.erofs rootfs/
+sudo cp files/init rootfs.$ARCH/sbin
+sudo mkfs.erofs rootfs-$ARCH.erofs rootfs.$ARCH/
 
-cp rootfs/usr/lib/modules/*/vmlinuz vmlinuz
+cp rootfs.$ARCH/usr/lib/modules/*/vmlinuz vmlinuz.$ARCH
