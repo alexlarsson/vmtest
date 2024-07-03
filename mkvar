@@ -1,0 +1,28 @@
+#!/usr/bin/bash
+
+set -e
+
+# Creates a var qcow with space to do work
+# Initially it just contains the container image which will be installed on first run
+
+CONTAINER_SOURCE=quay.io/centos-sig-automotive/automotive-osbuild
+CONTAINER_IMAGE_FILE=container.tar
+
+# Download container image
+if ! test -f $CONTAINER_IMAGE_FILE ; then
+   skopeo copy docker://$CONTAINER_SOURCE docker-archive:$CONTAINER_IMAGE_FILE:$CONTAINER_SOURCE
+fi
+
+# Install container image in rootfs
+ROOTFS=$(mktemp -d)
+cp $CONTAINER_IMAGE_FILE $ROOTFS
+
+rm -f var.ext4
+dd if=/dev/zero of=var.ext4 bs=1024 count=$((128*1024*1024))
+mkfs -t ext4 -d $ROOTFS -E root_owner=0:0 var.ext4
+
+# Convert to qcow2 (its mostly empty now so this will make it small until used)
+qemu-img convert -f raw -O qcow2 var.ext4 var.qcow2
+
+rm var.ext4
+rm -rf $ROOTFS

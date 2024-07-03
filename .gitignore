@@ -1,0 +1,7 @@
+rootfs
+rootfs.erofs
+vmlinuz
+var.qcow2
+container.tar
+_dnfcache
+

@@ -1,0 +1,48 @@
+#!/usr/bin/bash
+
+export PATH=/usr/bin:/usr/sbin
+
+# Mount all "API" filesystems
+mount -t devtmpfs devtmpfs /dev -o "mode=0755,size=64m,seclabel"
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys -o "seclabel"
+mount -t tmpfs tmpfs /run -o "mode=0755,size=64m,seclabel"
+mount -t tmpfs tmpfs /tmp -o "seclabel"
+mount -t cgroup2 none /sys/fs/cgroup -o "seclabel"
+mkdir /dev/shm
+mount -t tmpfs none /dev/shm
+
+# Make /etc transiently writable
+mkdir -p /run/etc/upper /run/etc/work
+mount -t overlay overlay -o "lowerdir=/etc,upperdir=/run/etc/upper,workdir=/run/etc/work" /etc
+
+# Mount and initialize /var
+mount -t ext4 /dev/vdb /mnt
+if ! test -f /mnt/initialized ; then
+   echo Initializing /var
+   cp -ra /var/* /mnt/
+   mount --move /mnt /var
+   podman load < /var/container.tar
+   rm /var/container.tar
+   touch /var/initialized
+else
+   mount --move /mnt /var
+fi
+
+# Mount build dir from host
+mount -t virtiofs host /mnt/
+
+# Copy reference sources from host
+mkdir -p /var/_build/osbuild_store/sources/org.osbuild.files
+cp -ran /mnt/osbuild_store/sources/org.osbuild.files/* /var/_build/osbuild_store/sources/org.osbuild.files
+cp /mnt/manifest.json /var/_build/
+
+# Run osbuild in the automotive-osbuild container
+podman run -ti -v /mnt:/mnt -v /var:/var --privileged --rm --privileged --workdir /var/_build \
+       --security-opt label=type:unconfined_t \
+       quay.io/centos-sig-automotive/automotive-osbuild \
+       \
+       osbuild --store osbuild_store --export qcow2 --output-dir . manifest.json
+
+# Spawn a bash at the end ..
+bash

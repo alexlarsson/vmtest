@@ -1,0 +1,9 @@
+#!/usr/bin/bash
+
+RPMS="filesystem podman util-linux kernel-automotive-modules"
+
+# This builds the basic rootfs chroot based on the above rpms from CS9 + autosd
+
+mkdir -p _dnfcache
+sudo rm -rf rootfs
+sudo dnf install -y -c files/dnf.conf --setopt=cachedir=$(pwd)/_dnfcache --installroot=`pwd`/rootfs --releasever 9 $RPMS

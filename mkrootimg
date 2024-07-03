@@ -1,0 +1,9 @@
+#!/usr/bin/bash
+
+# Create a erofs image with the rootfs + the basic init script
+# Also extracts the kernel for qemu use
+
+sudo cp files/init rootfs/sbin
+sudo mkfs.erofs rootfs.erofs rootfs/
+
+cp rootfs/usr/lib/modules/*/vmlinuz vmlinuz

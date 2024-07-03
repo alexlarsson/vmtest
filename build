@@ -1,0 +1,6 @@
+#!/usr/bin/bash
+
+./mkrootfs
+./mkrootimg
+./mkvar
+

@@ -1,0 +1,33 @@
+#!/usr/bin/bash
+
+set -e
+
+MANIFEST=$1
+
+AIB=../automotive-image-builder/automotive-image-builder
+
+BUILDDIR=_build
+mkdir -p $BUILDDIR
+
+# Compose json manifest
+$AIB compose $1 $BUILDDIR/manifest.json
+
+# Download referenced files
+osbuild --store $BUILDDIR/osbuild_store $BUILDDIR/manifest.json
+
+# Start virtiofs for referenced sources
+/usr/libexec/virtiofsd --socket-path=.vsock -o source=$BUILDDIR -o cache=always &
+sleep 1
+
+# Run osbuild in qemu
+qemu-kvm -nographic \
+         --kernel vmlinuz \
+         -cpu host \
+          -append "root=/dev/vda console=ttyS0" \
+          -m 2G \
+         -drive file=rootfs.erofs,snapshot=on,media=disk,format=raw,if=virtio,id=rootdisk \
+         -drive file=var.qcow2,media=disk,format=qcow2,if=virtio,id=vardisk \
+         -chardev socket,id=char0,path=.vsock \
+         -device vhost-user-fs-pci,queue-size=1024,chardev=char0,tag=host \
+         -object memory-backend-file,id=mem,size=2G,mem-path=/dev/shm,share=on \
+         -numa node,memdev=mem
